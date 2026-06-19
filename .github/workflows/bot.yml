@@ -2,7 +2,7 @@ name: Bot Mundial 2026 - Notificaciones
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # Cada 15 minutos
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -21,14 +21,20 @@ jobs:
       - name: Install
         run: pip install -r requirements.txt
       
-      - name: Check results
+      - name: Check and notify
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          JWT_TOKEN: ${{ secrets.JWT_TOKEN }}
         run: |
           python -c "
-          import os
+          import asyncio
           from telegram import Bot
-          bot = Bot(token=os.getenv('BOT_TOKEN'))
-          print('Bot OK, token:', bot.token[:10])
-          # Aquí irá la lógica de notificaciones
+          from services.notifications import NotificationService
+          
+          bot = Bot(token='${{ secrets.BOT_TOKEN }}')
+          notifier = NotificationService()
+          
+          asyncio.run(notifier.check_and_notify(bot))
           "

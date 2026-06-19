@@ -5,5 +5,3 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
-subscribers.json
-notified_matches.json
