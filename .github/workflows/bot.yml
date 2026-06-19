@@ -2,16 +2,15 @@ name: Bot Mundial 2026 - Notificaciones
 
 on:
   schedule:
-    # Cada 15 minutos
-    - cron: '*/15 * * * *'
-  workflow_dispatch:  # Permite ejecutar manualmente
+    - cron: '*/15 * * * *'  # Cada 15 minutos
+  workflow_dispatch:
 
 jobs:
-  check-results:
+  notify:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
       
       - name: Setup Python
@@ -19,27 +18,17 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
       
-      - name: Run notification check
+      - name: Check results
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          JWT_TOKEN: ${{ secrets.JWT_TOKEN }}
         run: |
-          python notify.py
-      
-      - name: Save notified matches
-        uses: actions/upload-artifact@v4
-        with:
-          name: notified-matches
-          path: notified_matches.json
-          if-no-files-found: ignore
-      
-      - name: Save subscribers
-        uses: actions/upload-artifact@v4
-        with:
-          name: subscribers
-          path: subscribers.json
-          if-no-files-found: ignore
+          python -c "
+          import os
+          from telegram import Bot
+          bot = Bot(token=os.getenv('BOT_TOKEN'))
+          print('Bot OK, token:', bot.token[:10])
+          # Aquí irá la lógica de notificaciones
+          "
