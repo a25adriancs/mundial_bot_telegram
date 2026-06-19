@@ -6,12 +6,10 @@ import os
 import json
 import asyncio
 from http.server import BaseHTTPRequestHandler
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Importar comandos del bot
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# Importar antes de telegram para evitar problemas
+from telegram import Update
+from telegram.ext import Application, CommandHandler
 
 from config import BOT_TOKEN
 from bot_commands import (
@@ -19,7 +17,7 @@ from bot_commands import (
     resumen, stats, suscribir, desuscribir
 )
 
-# Crear aplicación
+# Crear aplicación global (se reutiliza entre peticiones)
 application = Application.builder().token(BOT_TOKEN).build()
 
 # Registrar handlers
@@ -45,8 +43,10 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(body)
             update = Update.de_json(data, application.bot)
             
-            # Procesar update
-            asyncio.run(application.process_update(update))
+            # Procesar update de forma asíncrona
+            asyncio.get_event_loop().run_until_complete(
+                application.process_update(update)
+            )
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -55,7 +55,7 @@ class Handler(BaseHTTPRequestHandler):
             
         except Exception as e:
             print(f"Error: {e}")
-            self.send_response(200)  # Siempre 200 para Telegram
+            self.send_response(200)
             self.end_headers()
             self.wfile.write(b'{"ok": true}')
     
