@@ -1,21 +1,11 @@
-"""
-Punto de entrada principal del bot.
-Funciona como webhook en Vercel.
-"""
 import os
 import json
-import asyncio
 from http.server import BaseHTTPRequestHandler
 
 from telegram import Bot, Update
 
-from config import BOT_TOKEN
-from bot.handlers import setup_handlers
-from services.notifications import NotificationService
-
-# Inicializar bot
-bot = Bot(token=BOT_TOKEN)
-notifier = NotificationService()
+# NO importar bot.commands aquí arriba — solo cuando se necesite
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -24,6 +14,7 @@ class Handler(BaseHTTPRequestHandler):
         
         try:
             data = json.loads(body)
+            bot = Bot(token=BOT_TOKEN)
             update = Update.de_json(data, bot)
             
             if update.message and update.message.text:
@@ -32,32 +23,31 @@ class Handler(BaseHTTPRequestHandler):
                 
                 print(f"📩 {chat_id}: {text}")
                 
-                # Procesar comandos manualmente para Vercel
+                # Importar aquí, lazy, cuando ya están las variables
+                from bot.commands import (
+                    start, ayuda, resultados, partidos, clasificacion,
+                    resumen, stats, suscribir, desuscribir
+                )
+                
+                # Enrutar
                 if text == '/start':
-                    bot.send_message(chat_id=chat_id, text="🏆 *¡Bot del Mundial 2026!* ⚽\n\n📊 /resultados — Resultados\n📅 /partidos — Próximos partidos\n🏆 /clasificacion — Tablas\n📋 /resumen — Resumen\n🔔 /suscribir — Notificaciones\n❓ /ayuda — Ayuda", parse_mode='Markdown')
-                
+                    start(update, None)
                 elif text == '/suscribir':
-                    from database.supabase_client import SupabaseDB
-                    db = SupabaseDB()
-                    username = update.message.from_user.username if update.message.from_user else None
-                    chat_type = update.message.chat.type if update.message.chat else "private"
-                    db.add_subscriber(chat_id, username, chat_type)
-                    bot.send_message(chat_id=chat_id, text="🔔 *¡SUSCRIPCIÓN ACTIVADA!*\n\nRecibirás resultados automáticamente.", parse_mode='Markdown')
-                
+                    suscribir(update, None)
                 elif text == '/desuscribir':
-                    from database.supabase_client import SupabaseDB
-                    db = SupabaseDB()
-                    db.remove_subscriber(chat_id)
-                    bot.send_message(chat_id=chat_id, text="🔕 *Notificaciones desactivadas.*", parse_mode='Markdown')
-                
-                elif text == '/resultados':
-                    bot.send_message(chat_id=chat_id, text="⚽ Cargando resultados...", parse_mode='Markdown')
-                
-                elif text == '/partidos':
-                    bot.send_message(chat_id=chat_id, text="📅 Cargando próximos partidos...", parse_mode='Markdown')
-                
+                    desuscribir(update, None)
                 elif text in ['/ayuda', '/help']:
-                    bot.send_message(chat_id=chat_id, text="📋 *COMANDOS*\n\n/start — Iniciar\n/resultados — Resultados\n/partidos — Próximos partidos\n/clasificacion — Tablas\n/resumen — Resumen\n/suscribir — Activar notificaciones\n/desuscribir — Cancelar", parse_mode='Markdown')
+                    ayuda(update, None)
+                elif text == '/resultados':
+                    resultados(update, None)
+                elif text == '/partidos':
+                    partidos(update, None)
+                elif text == '/clasificacion':
+                    clasificacion(update, None)
+                elif text == '/resumen':
+                    resumen(update, None)
+                elif text == '/stats':
+                    stats(update, None)
             
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -66,6 +56,8 @@ class Handler(BaseHTTPRequestHandler):
             
         except Exception as e:
             print(f"❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b'{"ok": true}')
@@ -74,6 +66,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b'Bot Mundial 2026 - Webhook activo')
+        self.wfile.write(b'Bot Mundial 2026 - Webhook OK')
 
 app = Handler

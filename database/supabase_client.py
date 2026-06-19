@@ -1,21 +1,27 @@
 """
-Cliente de Supabase para guardar suscriptores y notificaciones.
+Cliente de Supabase con lazy loading.
+NO se conecta hasta que se llama a un método.
 """
 import os
 from supabase import create_client, Client
 
-from config import SUPABASE_URL, SUPABASE_KEY
-
 class SupabaseDB:
-    def __init__(self):
-        self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    _client = None
     
-    # ========== SUSCRIPTORES ==========
+    @classmethod
+    def _get_client(cls):
+        if cls._client is None:
+            url = os.getenv("SUPABASE_URL")
+            key = os.getenv("SUPABASE_KEY")
+            if not url or not key:
+                print(f"ERROR: SUPABASE_URL={url}, SUPABASE_KEY={'set' if key else 'missing'}")
+                raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set")
+            cls._client = create_client(url, key)
+        return cls._client
     
-    def add_subscriber(self, chat_id: int, username: str = None, chat_type: str = "private"):
-        """Añade un suscriptor"""
+    def add_subscriber(self, chat_id, username=None, chat_type="private"):
         try:
-            self.client.table("subscribers").upsert({
+            self._get_client().table("subscribers").upsert({
                 "chat_id": chat_id,
                 "username": username,
                 "chat_type": chat_type,
@@ -23,56 +29,36 @@ class SupabaseDB:
             }).execute()
             return True
         except Exception as e:
-            print(f"Error adding subscriber: {e}")
+            print(f"Error add_subscriber: {e}")
             return False
     
-    def remove_subscriber(self, chat_id: int):
-        """Elimina un suscriptor"""
+    def remove_subscriber(self, chat_id):
         try:
-            self.client.table("subscribers").update({"active": False}).eq("chat_id", chat_id).execute()
+            self._get_client().table("subscribers").update({"active": False}).eq("chat_id", chat_id).execute()
             return True
         except Exception as e:
-            print(f"Error removing subscriber: {e}")
+            print(f"Error remove_subscriber: {e}")
             return False
     
     def get_active_subscribers(self):
-        """Obtiene todos los suscriptores activos"""
         try:
-            response = self.client.table("subscribers").select("*").eq("active", True).execute()
+            response = self._get_client().table("subscribers").select("*").eq("active", True).execute()
             return response.data or []
         except Exception as e:
-            print(f"Error getting subscribers: {e}")
+            print(f"Error get_active_subscribers: {e}")
             return []
     
-    # ========== NOTIFICADOS ==========
-    
-    def is_notified(self, match_id: str) -> bool:
-        """Verifica si un partido ya fue notificado"""
+    def is_notified(self, match_id):
         try:
-            response = self.client.table("notified_matches").select("*").eq("match_id", match_id).execute()
+            response = self._get_client().table("notified_matches").select("*").eq("match_id", match_id).execute()
             return len(response.data) > 0
         except:
             return False
     
-    def mark_notified(self, match_id: str):
-        """Marca un partido como notificado"""
+    def mark_notified(self, match_id):
         try:
-            self.client.table("notified_matches").upsert({"match_id": match_id}).execute()
+            self._get_client().table("notified_matches").upsert({"match_id": match_id}).execute()
             return True
         except Exception as e:
-            print(f"Error marking notified: {e}")
+            print(f"Error mark_notified: {e}")
             return False
-    
-    # ========== ESTADÍSTICAS ==========
-    
-    def get_stats(self):
-        """Estadísticas de uso"""
-        try:
-            subs = self.client.table("subscribers").select("*").eq("active", True).execute()
-            notified = self.client.table("notified_matches").select("*").execute()
-            return {
-                "subscribers": len(subs.data),
-                "notified_matches": len(notified.data)
-            }
-        except:
-            return {"subscribers": 0, "notified_matches": 0}
