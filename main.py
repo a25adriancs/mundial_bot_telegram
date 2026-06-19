@@ -1,6 +1,7 @@
 import os
 import json
 import sys
+import asyncio
 from http.server import BaseHTTPRequestHandler
 
 from telegram import Bot, Update
@@ -23,56 +24,8 @@ class Handler(BaseHTTPRequestHandler):
                 
                 print(f"Message from {chat_id}: {text}", file=sys.stderr)
                 
-                # Responder según el comando
-                if text == '/start':
-                    bot.send_message(
-                        chat_id=chat_id,
-                        text="🏆 *¡Bot del Mundial 2026!* ⚽\n\n"
-                             "📊 /resultados — Resultados\n"
-                             "📅 /partidos — Próximos partidos\n"
-                             "🏆 /clasificacion — Tablas\n"
-                             "📋 /resumen — Resumen\n"
-                             "🔔 /suscribir — Notificaciones\n"
-                             "❓ /ayuda — Ayuda",
-                        parse_mode="Markdown"
-                    )
-                
-                elif text == '/suscribir':
-                    bot.send_message(
-                        chat_id=chat_id,
-                        text=f"🔔 *SUSCRIPCIÓN*\n\n"
-                             f"Tu chat ID: `{chat_id}`\n\n"
-                             f"Guarda este número para las notificaciones automáticas.",
-                        parse_mode="Markdown"
-                    )
-                
-                elif text == '/desuscribir':
-                    bot.send_message(
-                        chat_id=chat_id,
-                        text="🔕 *Notificaciones desactivadas.*",
-                        parse_mode="Markdown"
-                    )
-                
-                elif text in ['/ayuda', '/help']:
-                    bot.send_message(
-                        chat_id=chat_id,
-                        text="📋 *COMANDOS*\n\n"
-                             "/start — Iniciar\n"
-                             "/resultados — Resultados\n"
-                             "/partidos — Próximos partidos\n"
-                             "/clasificacion — Tablas\n"
-                             "/resumen — Resumen\n"
-                             "/suscribir — Tu ID para notificaciones\n"
-                             "/desuscribir — Cancelar",
-                        parse_mode="Markdown"
-                    )
-                
-                else:
-                    # Cualquier otro mensaje
-                    bot.send_message(
-                        chat_id=chat_id,
-                        text=f"Recibido: {text}\n\nUsa /ayuda para ver los comandos."
-                    )
+                # Ejecutar async en el loop
+                asyncio.run(self._handle_message(bot, chat_id, text))
             
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -86,6 +39,57 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b'{"ok": true}')
+    
+    async def _handle_message(self, bot, chat_id, text):
+        """Maneja el mensaje de forma async"""
+        if text == '/start':
+            await bot.send_message(
+                chat_id=chat_id,
+                text="🏆 *¡Bot del Mundial 2026!* ⚽\n\n"
+                     "📊 /resultados — Resultados\n"
+                     "📅 /partidos — Próximos partidos\n"
+                     "🏆 /clasificacion — Tablas\n"
+                     "📋 /resumen — Resumen\n"
+                     "🔔 /suscribir — Notificaciones\n"
+                     "❓ /ayuda — Ayuda",
+                parse_mode="Markdown"
+            )
+        
+        elif text == '/suscribir':
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"🔔 *SUSCRIPCIÓN*\n\n"
+                     f"Tu chat ID: `{chat_id}`\n\n"
+                     f"Guarda este número para las notificaciones automáticas.",
+                parse_mode="Markdown"
+            )
+        
+        elif text == '/desuscribir':
+            await bot.send_message(
+                chat_id=chat_id,
+                text="🔕 *Notificaciones desactivadas.*",
+                parse_mode="Markdown"
+            )
+        
+        elif text in ['/ayuda', '/help']:
+            await bot.send_message(
+                chat_id=chat_id,
+                text="📋 *COMANDOS*\n\n"
+                     "/start — Iniciar\n"
+                     "/resultados — Resultados\n"
+                     "/partidos — Próximos partidos\n"
+                     "/clasificacion — Tablas\n"
+                     "/resumen — Resumen\n"
+                     "/suscribir — Tu ID para notificaciones\n"
+                     "/desuscribir — Cancelar",
+                parse_mode="Markdown"
+            )
+        
+        else:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"Recibido: {text}\n\nUsa /ayuda para ver los comandos."
+            )
     
     def do_GET(self):
         self.send_response(200)
