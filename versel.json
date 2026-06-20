@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "functions": {
+    "webhook/index.js": {
+      "maxDuration": 10
+    }
+  },
+  "routes": [
+    {
+      "src": "/webhook",
+      "dest": "webhook/index.js"
+    }
+  ]
+}

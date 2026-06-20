@@ -1,0 +1,27 @@
+{
+  "name": "worldcup-telegram-bot",
+  "version": "1.0.0",
+  "description": "Bot de Telegram para notificaciones del Mundial 2026",
+  "main": "webhook/index.js",
+  "scripts": {
+    "start": "node webhook/index.js",
+    "poll": "node jobs/poll.js",
+    "set-webhook": "node telegram/setWebhook.js"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  },
+  "engines": {
+    "node": "20.x"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/a25adriancs/mundial_bot_telegram.git"
+  },
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/a25adriancs/mundial_bot_telegram/issues"
+  },
+  "homepage": "https://github.com/a25adriancs/mundial_bot_telegram#readme"
+}
