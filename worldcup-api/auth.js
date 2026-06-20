@@ -26,6 +26,9 @@ async function getToken() {
     throw new Error('La API no devolvió token en authenticate');
   }
 
+  // LOG TEMPORAL DE DIAGNÓSTICO - quitar cuando se resuelva el problema
+  console.log('Token obtenido correctamente, longitud:', data.token.length);
+
   return data.token;
 }
 
