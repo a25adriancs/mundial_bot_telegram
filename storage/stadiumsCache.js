@@ -3,7 +3,7 @@
  * Igual patrón que teamsCache.
  */
 
-const { query } = require('./db');
+const { query } = require('../db');
 
 let memoryCache = null;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;

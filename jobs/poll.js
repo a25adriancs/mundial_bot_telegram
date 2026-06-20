@@ -13,7 +13,7 @@ const { buildStadiumTimezoneMap, toSpainTime, formatSpainDate, getSpainDateStrin
 const { formatMatchResult } = require('../formatters/matchResult');
 const { sendMessage } = require('../telegram/sendMessage');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-const { query } = require('../storage/db');
+const { query } = require('../db');
 const { getTeamsMap, ensureTable: ensureTeamsTable } = require('../storage/teamsCache');
 const { getStadiumsMap, ensureTable: ensureStadiumsTable } = require('../storage/stadiumsCache');
 
