@@ -1,19 +1,19 @@
 /**
- * Comando /resultados — partidos finalizados hoy (hora española).
+ * Comando /resultados_hoy — partidos finalizados hoy (hora española).
  */
 
 const { getGames } = require('../api/getGames');
 const { getTeams } = require('../api/getTeams');
 const { getTeamsMap } = require('../storage/teamsCache');
-const { buildStadiumTimezoneMap, toSpainTime, getSpainDateString, getTodaySpain } = require('../utils/timezone');
-const { formatMatchList } = require('../formatters/matchList');
 const { getStadiums } = require('../api/getStadiums');
 const { getStadiumsMap } = require('../storage/stadiumsCache');
+const { buildStadiumTimezoneMap, toSpainTime, getSpainDateString, getTodaySpain } = require('../utils/timezone');
+const { formatMatchList } = require('../formatters/matchList');
 
 /**
  * @returns {Promise<string>} Mensaje para Telegram
  */
-async function resultados() {
+async function resultadosHoy() {
   const [teamsMap, stadiumsMap] = await Promise.all([
     getTeamsMap(getTeams),
     getStadiumsMap(getStadiums),
@@ -50,4 +50,4 @@ async function resultados() {
   return formatMatchList(finishedToday, teamsMap, 'Resultados de hoy');
 }
 
-module.exports = { resultados };
+module.exports = { resultadosHoy };

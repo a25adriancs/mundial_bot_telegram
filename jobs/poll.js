@@ -1,7 +1,7 @@
 /**
  * Script ejecutado por GitHub Actions cron.
  * Polling de partidos: detecta resultados finales y goles en vivo.
- * Envía notificaciones push a Telegram.
+ * Envía notificaciones push a TODOS los suscriptores activos (privados y grupos).
  */
 
 const { getGames } = require('../api/getGames');
@@ -10,12 +10,12 @@ const { getStadiums } = require('../api/getStadiums');
 const { getTeamsMap } = require('../storage/teamsCache');
 const { getStadiumsMap } = require('../storage/stadiumsCache');
 const { ensureTable: ensureNotifiedTable, isNotified, markNotified } = require('../storage/notifiedMatches');
+const { ensureTable: ensureSubscribersTable, getActiveSubscribers } = require('../storage/subscribers');
 const { buildStadiumTimezoneMap, toSpainTime, formatSpainDate, getSpainDateString, getTodaySpain } = require('../utils/timezone');
 const { formatMatchResult } = require('../formatters/matchResult');
 const { sendMessage } = require('../telegram/sendMessage');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const { query } = require('../storage/db');
 
 /**
  * Determina si hay partidos en juego o próximos en las próximas 4 horas.
@@ -30,7 +30,6 @@ function shouldPollToday(games, stadiumTzMap) {
     const spainDate = toSpainTime(g.local_date, tz);
     const diffHours = (spainDate - now) / (1000 * 60 * 60);
 
-    // Partido en juego (hace menos de 3h) o próximo (en las próximas 4h)
     if (diffHours > -3 && diffHours < 4) {
       return true;
     }
@@ -40,43 +39,13 @@ function shouldPollToday(games, stadiumTzMap) {
 }
 
 /**
- * Detecta cambios de marcador en partidos no finalizados.
- */
-function detectGoalChanges(current, previousMap) {
-  const changes = [];
-
-  for (const match of current) {
-    const isFinished = match.finished === 'TRUE' || match.finished === true;
-    if (isFinished) continue;
-
-    const prev = previousMap[match.id];
-    if (!prev) continue;
-
-    const homeChanged = match.home_score !== prev.home_score;
-    const awayChanged = match.away_score !== prev.away_score;
-
-    if (homeChanged || awayChanged) {
-      changes.push({
-        match,
-        previous: prev,
-        homeChanged,
-        awayChanged,
-      });
-    }
-  }
-
-  return changes;
-}
-
-/**
  * Formatea notificación de gol en vivo.
  */
-function formatGoalAlert(change, teamsMap, spainDateStr) {
-  const m = change.match;
-  const home = teamsMap[m.home_team_id] || { name_en: m.home_team_name_en || '???', flag: '' };
-  const away = teamsMap[m.away_team_id] || { name_en: m.away_team_name_en || '???', flag: '' };
+function formatGoalAlert(match, teamsMap, spainDateStr) {
+  const home = teamsMap[match.home_team_id] || { name_en: match.home_team_name_en || '???', flag: '' };
+  const away = teamsMap[match.away_team_id] || { name_en: match.away_team_name_en || '???', flag: '' };
 
-  const score = `${m.home_score ?? 0} - ${m.away_score ?? 0}`;
+  const score = `${match.home_score ?? 0} - ${match.away_score ?? 0}`;
 
   return [
     `⚽ *GOL EN VIVO*`,
@@ -87,16 +56,44 @@ function formatGoalAlert(change, teamsMap, spainDateStr) {
 }
 
 /**
+ * Notifica a todos los suscriptores activos.
+ */
+async function broadcast(message) {
+  const subscribers = await getActiveSubscribers();
+
+  if (subscribers.length === 0) {
+    console.log('No hay suscriptores activos. Saltando notificaciones.');
+    return;
+  }
+
+  for (const chatId of subscribers) {
+    try {
+      await retryWithBackoff(() => sendMessage(chatId, message));
+    } catch (err) {
+      console.error(`Error notificando a ${chatId}:`, err.message);
+      // Si es error de chat no encontrado o bot bloqueado, podríamos desactivar
+      if (err.message?.includes('chat not found') || err.message?.includes('bot was blocked')) {
+        try {
+          await query(
+            `UPDATE subscribers SET active = FALSE WHERE chat_id = $1`,
+            [String(chatId)]
+          );
+          console.log(`Desactivado suscriptor ${chatId} por error persistente.`);
+        } catch (dbErr) {
+          console.error('Error desactivando suscriptor:', dbErr.message);
+        }
+      }
+    }
+  }
+}
+
+/**
  * Entry point del job.
  */
 async function main() {
-  if (!CHAT_ID) {
-    console.error('Falta TELEGRAM_CHAT_ID');
-    process.exit(1);
-  }
-
   // Asegurar tablas
   await ensureNotifiedTable();
+  await ensureSubscribersTable();
 
   // Cargar caches
   const teamsMap = await retryWithBackoff(() => getTeamsMap(getTeams));
@@ -114,10 +111,7 @@ async function main() {
     return;
   }
 
-  // Cargar estado anterior de partidos (de variables de entorno o BD)
-  // Para GitHub Actions, usamos el artefacto del run anterior o un approach simple:
-  // Guardamos el estado en una tabla de estado
-  const { query } = require('../storage/db');
+  // Cargar estado anterior de partidos
   await query(`
     CREATE TABLE IF NOT EXISTS poll_state (
       key TEXT PRIMARY KEY,
@@ -147,27 +141,23 @@ async function main() {
       const alreadyNotified = await isNotified(match.id, 'finished');
       if (!alreadyNotified) {
         const message = formatMatchResult(match, teamsMap, stadiumsMap, spainDateStr);
-        await retryWithBackoff(() => sendMessage(CHAT_ID, message));
+        await broadcast(message);
         await markNotified(match.id, 'finished');
         console.log(`Notificado final: ${match.id}`);
       }
     }
 
-    // 2. Notificar gol en vivo (opcional, nice-to-have)
+    // 2. Notificar gol en vivo
     if (!isFinished && previousMap[match.id]) {
       const homeChanged = match.home_score !== previousMap[match.id].home_score;
       const awayChanged = match.away_score !== previousMap[match.id].away_score;
 
       if (homeChanged || awayChanged) {
-        const alreadyNotified = await isNotified(`${match.id}-${match.home_score}-${match.away_score}`, 'goal');
+        const goalKey = `${match.id}-${match.home_score}-${match.away_score}`;
+        const alreadyNotified = await isNotified(goalKey, 'goal');
         if (!alreadyNotified) {
-          const goalKey = `${match.id}-${match.home_score}-${match.away_score}`;
-          const message = formatGoalAlert(
-            { match, previous: previousMap[match.id], homeChanged, awayChanged },
-            teamsMap,
-            spainDateStr
-          );
-          await retryWithBackoff(() => sendMessage(CHAT_ID, message));
+          const message = formatGoalAlert(match, teamsMap, spainDateStr);
+          await broadcast(message);
           await markNotified(goalKey, 'goal');
           console.log(`Notificado gol: ${match.id} (${match.home_score}-${match.away_score})`);
         }

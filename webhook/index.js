@@ -1,49 +1,53 @@
 /**
  * Entry point serverless para Vercel.
  * Recibe updates de Telegram vía webhook y enruta a comandos.
+ * Multi-chat: responde al chat que envía el comando.
  */
 
-const { resultados } = require('../commands/resultados');
+const { start } = require('../commands/start');
+const { stop } = require('../commands/stop');
+const { resultadosHoy } = require('../commands/resultadosHoy');
 const { proximos } = require('../commands/proximos');
 const { clasificacion } = require('../commands/clasificacion');
 const { equipo } = require('../commands/equipo');
 const { sendMessage } = require('../telegram/sendMessage');
 
 /**
- * Extrae el comando y argumentos de un mensaje de Telegram.
- * @param {string} text
- * @returns {Object|null}
+ * Extrae el comando y argumentos, soportando @BotName en grupos.
  */
-function parseCommand(text) {
+function parseCommand(text, botUsername) {
   if (!text || !text.startsWith('/')) return null;
 
   const parts = text.trim().split(/\s+/);
-  const fullCommand = parts[0]; // ej: "/resultados@MiBot"
-  const command = fullCommand.split('@')[0].toLowerCase();
-  const args = parts.slice(1).join(' ');
+  const fullCommand = parts[0];
+  const [command, mentionedBot] = fullCommand.split('@');
 
-  return { command, args };
+  // En grupos, si hay @BotName, verificar que sea el nuestro
+  if (mentionedBot && botUsername && mentionedBot.toLowerCase() !== botUsername.toLowerCase()) {
+    return null;
+  }
+
+  return {
+    command: command.toLowerCase(),
+    args: parts.slice(1).join(' '),
+  };
 }
 
-/**
- * Handler principal de Vercel.
- */
 module.exports = async function handler(req, res) {
-  // Solo aceptar POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const update = req.body;
 
-  // Validar estructura mínima
   if (!update?.message?.text || !update?.message?.chat?.id) {
-    return res.status(200).json({ ok: true }); // Acknowledge para evitar reenvíos
+    return res.status(200).json({ ok: true });
   }
 
   const chatId = update.message.chat.id;
   const text = update.message.text;
-  const parsed = parseCommand(text);
+  const botUsername = process.env.TELEGRAM_BOT_USERNAME || '';
+  const parsed = parseCommand(text, botUsername);
 
   if (!parsed) {
     return res.status(200).json({ ok: true });
@@ -55,8 +59,14 @@ module.exports = async function handler(req, res) {
 
   try {
     switch (command) {
-      case '/resultados':
-        reply = await resultados();
+      case '/start':
+        reply = await start(update.message);
+        break;
+      case '/stop':
+        reply = await stop(chatId);
+        break;
+      case '/resultados_hoy':
+        reply = await resultadosHoy();
         break;
       case '/proximos':
         reply = await proximos();
@@ -67,17 +77,6 @@ module.exports = async function handler(req, res) {
       case '/equipo':
         reply = await equipo(args || null);
         break;
-      case '/start':
-        reply = [
-          '⚽ *Bot del Mundial 2026*',
-          '',
-          'Comandos disponibles:',
-          '• /resultados — Partidos finalizados hoy',
-          '• /proximos — Próximos partidos',
-          '• /clasificacion [grupo] — Tabla de grupo (A-L)',
-          '• /equipo [nombre] — Info de un equipo',
-        ].join('\n');
-        break;
       default:
         reply = '❓ Comando no reconocido. Usa /start para ver los disponibles.';
     }
@@ -86,13 +85,11 @@ module.exports = async function handler(req, res) {
     reply = '❌ Error al procesar el comando. Inténtalo de nuevo más tarde.';
   }
 
-  // Enviar respuesta
   try {
     await sendMessage(chatId, reply);
   } catch (err) {
     console.error('Error enviando respuesta:', err);
   }
 
-  // Siempre responder 200 a Telegram para evitar reenvíos
   return res.status(200).json({ ok: true });
 };
