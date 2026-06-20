@@ -13,7 +13,7 @@ const { buildStadiumTimezoneMap, toSpainTime, formatSpainDate, getSpainDateStrin
 const { formatMatchResult } = require('../formatters/matchResult');
 const { sendMessage } = require('../telegram/sendMessage');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-const { query } = require('../db');
+const { query } = require('../storage/db');
 const { getTeamsMap, ensureTable: ensureTeamsTable } = require('../storage/teamsCache');
 const { getStadiumsMap, ensureTable: ensureStadiumsTable } = require('../storage/stadiumsCache');
 
@@ -98,13 +98,26 @@ async function main() {
   await ensureStadiumsTable();
 
   // Cargar caches
+  // LOG TEMPORAL DE DIAGNÓSTICO - quitar cuando se resuelva el problema
+  console.log('Iniciando fetch de teams...');
   const teamsMap = await retryWithBackoff(() => getTeamsMap(getTeams));
+  console.log(`Teams obtenidos: ${Object.keys(teamsMap).length}`);
+
+  console.log('Iniciando fetch de stadiums...');
   const stadiumsMap = await retryWithBackoff(() => getStadiumsMap(getStadiums));
+  console.log(`Stadiums obtenidos: ${Object.keys(stadiumsMap).length}`);
+
   // Construir mapa de timezones
   const stadiumTzMap = buildStadiumTimezoneMap(Object.values(stadiumsMap));
+  console.log(`Timezones mapeadas: ${stadiumTzMap.size}`);
 
   // Obtener partidos actuales
+  console.log('Iniciando fetch de games...');
   const games = await retryWithBackoff(getGames);
+  console.log(`Games obtenidos: ${games.length}`);
+  if (games.length > 0) {
+    console.log('Ejemplo de partido:', JSON.stringify(games[0]));
+  }
 
   // Optimización: si no hay partidos relevantes hoy, salir temprano
   if (!shouldPollToday(games, stadiumTzMap)) {
@@ -180,3 +193,4 @@ main().catch(err => {
   console.error('Error en poll:', err);
   process.exit(1);
 });
+              
