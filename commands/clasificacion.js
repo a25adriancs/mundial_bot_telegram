@@ -2,9 +2,9 @@
  * Comando /clasificacion [grupo] — tabla de un grupo.
  */
 
-const { getGroups } = require('../api/getGroups');
-const { getGroupByName } = require('../api/getGroup');
-const { getTeams } = require('../api/getTeams');
+const { getGroups } = require('../worldcup-api/getGroups');
+const { getGroupByName } = require('../worldcup-api/getGroup');
+const { getTeams } = require('..//worldcup-api/getTeams');
 const { getTeamsMap } = require('../storage/teamsCache');
 const { formatStandings } = require('../formatters/standings');
 

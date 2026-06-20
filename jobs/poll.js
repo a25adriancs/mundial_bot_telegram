@@ -4,9 +4,9 @@
  * Envía notificaciones push a TODOS los suscriptores activos (privados y grupos).
  */
 
-const { getGames } = require('../api/getGames');
-const { getTeams } = require('../api/getTeams');
-const { getStadiums } = require('../api/getStadiums');
+const { getGames } = require('../worldcup-api/getGames');
+const { getTeams } = require('../worldcup-api/getTeams');
+const { getStadiums } = require('../worldcup-api/getStadiums');
 const { ensureTable: ensureNotifiedTable, isNotified, markNotified } = require('../storage/notifiedMatches');
 const { ensureTable: ensureSubscribersTable, getActiveSubscribers } = require('../storage/subscribers');
 const { buildStadiumTimezoneMap, toSpainTime, formatSpainDate, getSpainDateString, getTodaySpain } = require('../utils/timezone');

@@ -3,11 +3,11 @@
  * Tolera variantes: mayúsculas/minúsculas, con/sin tildes.
  */
 
-const { getTeamByName } = require('../api/getTeam');
-const { getGames } = require('../api/getGames');
-const { getTeams } = require('../api/getTeams');
+const { getTeamByName } = require('../worldcup-api/getTeam');
+const { getGames } = require('../worldcup-api/getGames');
+const { getTeams } = require('../worldcup-api/getTeams');
 const { getTeamsMap } = require('../storage/teamsCache');
-const { getStadiums } = require('../api/getStadiums');
+const { getStadiums } = require('../worldcup-api/getStadiums');
 const { getStadiumsMap } = require('../storage/stadiumsCache');
 const { buildStadiumTimezoneMap, toSpainTime } = require('../utils/timezone');
 const { formatTeamInfo } = require('../formatters/teamInfo');

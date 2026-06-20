@@ -2,10 +2,10 @@
  * Comando /resultados_hoy — partidos finalizados hoy (hora española).
  */
 
-const { getGames } = require('../api/getGames');
-const { getTeams } = require('../api/getTeams');
+const { getGames } = require('../worldcup-api/getGames');
+const { getTeams } = require('../worldcup-api/getTeams');
 const { getTeamsMap } = require('../storage/teamsCache');
-const { getStadiums } = require('../api/getStadiums');
+const { getStadiums } = require('../worldcup-api/getStadiums');
 const { getStadiumsMap } = require('../storage/stadiumsCache');
 const { buildStadiumTimezoneMap, toSpainTime, getSpainDateString, getTodaySpain } = require('../utils/timezone');
 const { formatMatchList } = require('../formatters/matchList');
