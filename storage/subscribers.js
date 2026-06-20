@@ -3,7 +3,7 @@
  * Cualquier chat (privado o grupo) que use /start se auto-registra.
  */
 
-const { query } = require('../db');
+const { query } = require('./db');
 
 const TABLE = 'subscribers';
 
