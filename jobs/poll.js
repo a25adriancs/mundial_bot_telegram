@@ -16,6 +16,8 @@ const { formatMatchResult } = require('../formatters/matchResult');
 const { sendMessage } = require('../telegram/sendMessage');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { query } = require('../storage/db');
+const { getTeamsMap, ensureTable: ensureTeamsTable } = require('../storage/teamsCache');
+const { getStadiumsMap, ensureTable: ensureStadiumsTable } = require('../storage/stadiumsCache');
 
 /**
  * Determina si hay partidos en juego o próximos en las próximas 4 horas.
@@ -94,11 +96,12 @@ async function main() {
   // Asegurar tablas
   await ensureNotifiedTable();
   await ensureSubscribersTable();
+  await ensureTeamsTable();
+  await ensureStadiumsTable();
 
   // Cargar caches
   const teamsMap = await retryWithBackoff(() => getTeamsMap(getTeams));
   const stadiumsMap = await retryWithBackoff(() => getStadiumsMap(getStadiums));
-
   // Construir mapa de timezones
   const stadiumTzMap = buildStadiumTimezoneMap(Object.values(stadiumsMap));
 
