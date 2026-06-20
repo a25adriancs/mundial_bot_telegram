@@ -7,8 +7,6 @@
 const { getGames } = require('../api/getGames');
 const { getTeams } = require('../api/getTeams');
 const { getStadiums } = require('../api/getStadiums');
-const { getTeamsMap } = require('../storage/teamsCache');
-const { getStadiumsMap } = require('../storage/stadiumsCache');
 const { ensureTable: ensureNotifiedTable, isNotified, markNotified } = require('../storage/notifiedMatches');
 const { ensureTable: ensureSubscribersTable, getActiveSubscribers } = require('../storage/subscribers');
 const { buildStadiumTimezoneMap, toSpainTime, formatSpainDate, getSpainDateString, getTodaySpain } = require('../utils/timezone');
