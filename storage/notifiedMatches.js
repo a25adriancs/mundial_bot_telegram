@@ -3,7 +3,7 @@
  * Evita duplicados de notificaciones push.
  */
 
-const { query } = require('../db');
+const { query } = require('./db');
 
 const TABLE = 'notified_matches';
 
