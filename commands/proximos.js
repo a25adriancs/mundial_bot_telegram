@@ -1,12 +1,14 @@
 /**
  * Comando /proximos — próximos partidos sin jugar, ordenados por fecha.
+ * Lee de la cache de Supabase (gamesCache), NO llama a worldcup26.ir
+ * directamente, porque esa API rechaza conexiones desde Vercel.
  */
 
-const { getGames } = require('../worldcup-api/getGames');
 const { getTeams } = require('../worldcup-api/getTeams');
 const { getTeamsMap } = require('../storage/teamsCache');
 const { getStadiums } = require('../worldcup-api/getStadiums');
 const { getStadiumsMap } = require('../storage/stadiumsCache');
+const { getGamesFromCache } = require('../storage/gamesCache');
 const { buildStadiumTimezoneMap, toSpainTime } = require('../utils/timezone');
 const { formatMatchList } = require('../formatters/matchList');
 
@@ -14,13 +16,17 @@ const { formatMatchList } = require('../formatters/matchList');
  * @returns {Promise<string>} Mensaje para Telegram
  */
 async function proximos() {
-  const [teamsMap, stadiumsMap] = await Promise.all([
+  const [teamsMap, stadiumsMap, games] = await Promise.all([
     getTeamsMap(getTeams),
     getStadiumsMap(getStadiums),
+    getGamesFromCache(),
   ]);
 
+  if (games.length === 0) {
+    return '⚠️ Aún no hay datos de partidos en cache. Inténtalo de nuevo en unos minutos.';
+  }
+
   const stadiumTzMap = buildStadiumTimezoneMap(Object.values(stadiumsMap));
-  const games = await getGames();
 
   const nowSpain = new Date().toLocaleString('en-US', { timeZone: 'Europe/Madrid' });
   const now = new Date(nowSpain);
