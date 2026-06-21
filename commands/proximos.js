@@ -1,7 +1,6 @@
 /**
  * Comando /proximos — próximos partidos sin jugar, ordenados por fecha.
- * Lee de la cache de Supabase (gamesCache), NO llama a worldcup26.ir
- * directamente, porque esa API rechaza conexiones desde Vercel.
+ * VERSION CON DEBUG EXTREMO - temporal, para encontrar el bug del filtro.
  */
 
 const { getTeams } = require('../worldcup-api/getTeams');
@@ -12,9 +11,6 @@ const { getGamesFromCache } = require('../storage/gamesCache');
 const { buildStadiumTimezoneMap, toSpainTime } = require('../utils/timezone');
 const { formatMatchList } = require('../formatters/matchList');
 
-/**
- * @returns {Promise<string>} Mensaje para Telegram
- */
 async function proximos() {
   const [teamsMap, stadiumsMap, games] = await Promise.all([
     getTeamsMap(getTeams),
@@ -22,25 +18,31 @@ async function proximos() {
     getGamesFromCache(),
   ]);
 
-  // LOG TEMPORAL DE DIAGNÓSTICO - quitar cuando se resuelva el problema
-  console.log('[/proximos] games.length:', games.length);
-  console.log('[/proximos] typeof games:', typeof games, Array.isArray(games));
-  console.log('[/proximos] stadiumsMap keys:', Object.keys(stadiumsMap).length);
-
   if (games.length === 0) {
     return '⚠️ Aún no hay datos de partidos en cache. Inténtalo de nuevo en unos minutos.';
   }
 
   const stadiumTzMap = buildStadiumTimezoneMap(Object.values(stadiumsMap));
-  console.log('[/proximos] stadiumTzMap size:', stadiumTzMap.size);
-  console.log('[/proximos] stadiumTzMap tiene "7"?:', stadiumTzMap.has('7'), stadiumTzMap.get('7'));
 
   const nowSpain = new Date().toLocaleString('en-US', { timeZone: 'Europe/Madrid' });
   const now = new Date(nowSpain);
-  console.log('[/proximos] now (Madrid):', now.toString());
 
-  const notFinished = games.filter(g => !(g.finished === 'TRUE' || g.finished === true));
-  console.log('[/proximos] partidos no finalizados:', notFinished.length);
+  // DEBUG EXTREMO: log del partido 39 específico, paso a paso
+  const partido39 = games.find(g => String(g.id) === '39');
+  if (partido39) {
+    console.log('[DEBUG39] objeto completo:', JSON.stringify(partido39));
+    console.log('[DEBUG39] typeof finished:', typeof partido39.finished, JSON.stringify(partido39.finished));
+    const isFin = partido39.finished === 'TRUE' || partido39.finished === true;
+    console.log('[DEBUG39] isFinished calculado:', isFin);
+    const tz39 = stadiumTzMap.get(String(partido39.stadium_id)) || 'America/New_York';
+    console.log('[DEBUG39] stadium_id:', JSON.stringify(partido39.stadium_id), 'tz:', tz39);
+    const sd39 = toSpainTime(partido39.local_date, tz39);
+    console.log('[DEBUG39] local_date:', partido39.local_date, '-> spainDate:', sd39.toISOString());
+    console.log('[DEBUG39] now:', now.toISOString());
+    console.log('[DEBUG39] spainDate > now:', sd39 > now);
+  } else {
+    console.log('[DEBUG39] Partido 39 NO encontrado en games array. IDs disponibles (primeros 10):', games.slice(0, 10).map(g => g.id));
+  }
 
   const upcoming = games
     .filter(g => {
@@ -62,7 +64,7 @@ async function proximos() {
       return g;
     })
     .sort((a, b) => a._spainDate - b._spainDate)
-    .slice(0, 10); // Máximo 10 próximos
+    .slice(0, 10);
 
   console.log('[/proximos] upcoming.length tras filtro:', upcoming.length);
 
