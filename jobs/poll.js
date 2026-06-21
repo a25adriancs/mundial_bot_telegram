@@ -21,6 +21,22 @@ const { query } = require('../storage/db');
 const { getTeamsMap, ensureTable: ensureTeamsTable } = require('../storage/teamsCache');
 const { getStadiumsMap, ensureTable: ensureStadiumsTable } = require('../storage/stadiumsCache');
 const { saveGames, ensureTable: ensureGamesTable } = require('../storage/gamesCache');
+const { getTeamFlagEmoji } = require('../utils/flagEmoji');
+
+/**
+ * Normaliza un valor de marcador (puede venir como número, string
+ * numérico, null, undefined, o el string literal "null") a un número.
+ * Esto evita mostrar "null - null" y evita falsos positivos de "gol"
+ * cuando el partido aún no ha empezado (marcador sin definir).
+ * @param {*} value
+ * @returns {number}
+ */
+function normalizeScore(value) {
+  if (value === null || value === undefined) return 0;
+  if (value === 'null') return 0;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
 
 /**
  * Determina si hay partidos en juego o próximos en las próximas 4 horas.
@@ -33,6 +49,7 @@ function shouldPollToday(games, stadiumTzMap) {
   for (const g of games) {
     const tz = stadiumTzMap.get(String(g.stadium_id)) || 'America/New_York';
     const spainDate = toSpainTime(g.local_date, tz);
+    if (Number.isNaN(spainDate.getTime())) continue;
     const diffHours = (spainDate - now) / (1000 * 60 * 60);
 
     if (diffHours > -3 && diffHours < 4) {
@@ -50,12 +67,15 @@ function formatGoalAlert(match, teamsMap, spainDateStr) {
   const home = teamsMap[match.home_team_id] || { name_en: match.home_team_name_en || '???', flag: '' };
   const away = teamsMap[match.away_team_id] || { name_en: match.away_team_name_en || '???', flag: '' };
 
-  const score = `${match.home_score ?? 0} - ${match.away_score ?? 0}`;
+  const homeFlag = getTeamFlagEmoji(home);
+  const awayFlag = getTeamFlagEmoji(away);
+
+  const score = `${normalizeScore(match.home_score)} - ${normalizeScore(match.away_score)}`;
 
   return [
     `⚽ *GOL EN VIVO*`,
     ``,
-    `${home.flag} *${home.name_en}* ${score} *${away.name_en}* ${away.flag}`,
+    `${homeFlag} *${home.name_en}* ${score} *${away.name_en}* ${awayFlag}`,
     `📅 ${spainDateStr}`,
   ].join('\n');
 }
@@ -76,7 +96,6 @@ async function broadcast(message) {
       await retryWithBackoff(() => sendMessage(chatId, message));
     } catch (err) {
       console.error(`Error notificando a ${chatId}:`, err.message);
-      // Si es error de chat no encontrado o bot bloqueado, podríamos desactivar
       if (err.message?.includes('chat not found') || err.message?.includes('bot was blocked')) {
         try {
           await query(
@@ -96,36 +115,28 @@ async function broadcast(message) {
  * Entry point del job.
  */
 async function main() {
-  // Asegurar tablas
   await ensureNotifiedTable();
   await ensureSubscribersTable();
   await ensureTeamsTable();
   await ensureStadiumsTable();
   await ensureGamesTable();
 
-  // Cargar caches
   const teamsMap = await retryWithBackoff(() => getTeamsMap(getTeams));
   const stadiumsMap = await retryWithBackoff(() => getStadiumsMap(getStadiums));
 
-  // Construir mapa de timezones
   const stadiumTzMap = buildStadiumTimezoneMap(Object.values(stadiumsMap));
 
-  // Obtener partidos actuales
   const games = await retryWithBackoff(getGames);
 
   // Guardar SIEMPRE en cache, independientemente de si hay polling activo o no.
-  // Esto es lo que permite que el webhook (Vercel) responda a /proximos,
-  // /resultados_hoy, /clasificacion y /equipo sin llamar a la API en vivo.
   await saveGames(games);
   console.log(`Cache de games actualizada: ${games.length} partidos guardados.`);
 
-  // Optimización: si no hay partidos relevantes hoy, salir temprano
   if (!shouldPollToday(games, stadiumTzMap)) {
     console.log('No hay partidos en franja activa. Saltando polling.');
     return;
   }
 
-  // Cargar estado anterior de partidos
   await query(`
     CREATE TABLE IF NOT EXISTS poll_state (
       key TEXT PRIMARY KEY,
@@ -141,10 +152,10 @@ async function main() {
     previousMap[g.id] = g;
   }
 
-  // Procesar cada partido
   for (const match of games) {
     const tz = stadiumTzMap.get(String(match.stadium_id)) || 'America/New_York';
     const spainDate = toSpainTime(match.local_date, tz);
+    if (Number.isNaN(spainDate.getTime())) continue; // fecha inválida, saltar este partido
     const spainDateStr = formatSpainDate(spainDate);
 
     const isFinished = match.finished === 'TRUE' || match.finished === true;
@@ -162,24 +173,36 @@ async function main() {
     }
 
     // 2. Notificar gol en vivo
+    // Solo si el partido ya estaba en el snapshot anterior (existe previousMap[match.id]),
+    // y el marcador NORMALIZADO cambió de verdad (evita falsos positivos por
+    // "null" vs undefined cuando el partido aún no había empezado).
     if (!isFinished && previousMap[match.id]) {
-      const homeChanged = match.home_score !== previousMap[match.id].home_score;
-      const awayChanged = match.away_score !== previousMap[match.id].away_score;
+      const prevHome = normalizeScore(previousMap[match.id].home_score);
+      const prevAway = normalizeScore(previousMap[match.id].away_score);
+      const currHome = normalizeScore(match.home_score);
+      const currAway = normalizeScore(match.away_score);
 
-      if (homeChanged || awayChanged) {
-        const goalKey = `${match.id}-${match.home_score}-${match.away_score}`;
+      const homeChanged = currHome !== prevHome;
+      const awayChanged = currAway !== prevAway;
+
+      // Además, exigimos que el partido ya haya empezado (time_elapsed
+      // distinto de "notstarted") para evitar notificar "goles" en
+      // partidos que todavía no comenzaron.
+      const hasStarted = match.time_elapsed && match.time_elapsed !== 'notstarted';
+
+      if ((homeChanged || awayChanged) && hasStarted) {
+        const goalKey = `${match.id}-${currHome}-${currAway}`;
         const alreadyNotified = await isNotified(goalKey, 'goal');
         if (!alreadyNotified) {
           const message = formatGoalAlert(match, teamsMap, spainDateStr);
           await broadcast(message);
           await markNotified(goalKey, 'goal');
-          console.log(`Notificado gol: ${match.id} (${match.home_score}-${match.away_score})`);
+          console.log(`Notificado gol: ${match.id} (${currHome}-${currAway})`);
         }
       }
     }
   }
 
-  // Guardar estado actual para el siguiente run
   await query(
     `INSERT INTO poll_state (key, value) VALUES ('last_games', $1)
      ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
