@@ -36,6 +36,7 @@ async function resultadosHoy() {
 
       const tz = stadiumTzMap.get(String(g.stadium_id)) || 'America/New_York';
       const spainDate = toSpainTime(g.local_date, tz);
+      if (Number.isNaN(spainDate.getTime())) return false;
       const dateStr = getSpainDateString(spainDate);
 
       return dateStr === today;
