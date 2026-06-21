@@ -46,9 +46,6 @@ async function start(message) {
     `📋 \`/equipos\``,
     `   Lista de todos los equipos disponibles`,
     ``,
-    `🔕 \`/stop\``,
-    `   Cancelar notificaciones`,
-    ``,
     `━━━━━━━━━━━━━━━━━━━━`,
   ].join('\n');
 }
