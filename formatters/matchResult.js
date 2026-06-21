@@ -6,6 +6,7 @@
 const { formatSpainDate } = require('../utils/timezone');
 const { parseScorers } = require('../utils/parseScorers');
 const { sanitizeText } = require('../utils/sanitizeText');
+const { getTeamFlagEmoji } = require('../utils/flagEmoji');
 
 /**
  * @param {Object} match - Partido de la API
@@ -17,6 +18,9 @@ const { sanitizeText } = require('../utils/sanitizeText');
 function formatMatchResult(match, teamsMap, stadiumsMap, spainDateStr) {
   const homeTeam = teamsMap[match.home_team_id] || { name_en: match.home_team_name_en || '???', flag: '' };
   const awayTeam = teamsMap[match.away_team_id] || { name_en: match.away_team_name_en || '???', flag: '' };
+
+  const homeFlag = getTeamFlagEmoji(homeTeam);
+  const awayFlag = getTeamFlagEmoji(awayTeam);
 
   const homeScore = match.home_score ?? 0;
   const awayScore = match.away_score ?? 0;
@@ -43,7 +47,7 @@ function formatMatchResult(match, teamsMap, stadiumsMap, spainDateStr) {
   return [
     `🏁 *RESULTADO FINAL*`,
     ``,
-    `${homeTeam.flag} *${homeTeam.name_en}* ${homeScore} - ${awayScore} *${awayTeam.name_en}* ${awayTeam.flag}`,
+    `${homeFlag} *${homeTeam.name_en}* ${homeScore} - ${awayScore} *${awayTeam.name_en}* ${awayFlag}`,
     ``,
     `📅 ${spainDateStr} (hora española)`,
     `🏆 ${typeLabel} · ${groupLabel}${stadiumLine}`,
