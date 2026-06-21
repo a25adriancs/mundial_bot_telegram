@@ -2,6 +2,10 @@
  * Script ejecutado por GitHub Actions cron.
  * Polling de partidos: detecta resultados finales y goles en vivo.
  * Envía notificaciones push a TODOS los suscriptores activos (privados y grupos).
+ *
+ * IMPORTANTE: este es el ÚNICO sitio que llama a la API de worldcup26.ir
+ * para obtener `games`. El webhook (Vercel) lee siempre de gamesCache
+ * (Supabase), porque worldcup26.ir rechaza conexiones TLS desde Vercel.
  */
 
 const { getGames } = require('../worldcup-api/getGames');
@@ -16,6 +20,7 @@ const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { query } = require('../storage/db');
 const { getTeamsMap, ensureTable: ensureTeamsTable } = require('../storage/teamsCache');
 const { getStadiumsMap, ensureTable: ensureStadiumsTable } = require('../storage/stadiumsCache');
+const { saveGames, ensureTable: ensureGamesTable } = require('../storage/gamesCache');
 
 /**
  * Determina si hay partidos en juego o próximos en las próximas 4 horas.
@@ -96,28 +101,23 @@ async function main() {
   await ensureSubscribersTable();
   await ensureTeamsTable();
   await ensureStadiumsTable();
+  await ensureGamesTable();
 
   // Cargar caches
-  // LOG TEMPORAL DE DIAGNÓSTICO - quitar cuando se resuelva el problema
-  console.log('Iniciando fetch de teams...');
   const teamsMap = await retryWithBackoff(() => getTeamsMap(getTeams));
-  console.log(`Teams obtenidos: ${Object.keys(teamsMap).length}`);
-
-  console.log('Iniciando fetch de stadiums...');
   const stadiumsMap = await retryWithBackoff(() => getStadiumsMap(getStadiums));
-  console.log(`Stadiums obtenidos: ${Object.keys(stadiumsMap).length}`);
 
   // Construir mapa de timezones
   const stadiumTzMap = buildStadiumTimezoneMap(Object.values(stadiumsMap));
-  console.log(`Timezones mapeadas: ${stadiumTzMap.size}`);
 
   // Obtener partidos actuales
-  console.log('Iniciando fetch de games...');
   const games = await retryWithBackoff(getGames);
-  console.log(`Games obtenidos: ${games.length}`);
-  if (games.length > 0) {
-    console.log('Ejemplo de partido:', JSON.stringify(games[0]));
-  }
+
+  // Guardar SIEMPRE en cache, independientemente de si hay polling activo o no.
+  // Esto es lo que permite que el webhook (Vercel) responda a /proximos,
+  // /resultados_hoy, /clasificacion y /equipo sin llamar a la API en vivo.
+  await saveGames(games);
+  console.log(`Cache de games actualizada: ${games.length} partidos guardados.`);
 
   // Optimización: si no hay partidos relevantes hoy, salir temprano
   if (!shouldPollToday(games, stadiumTzMap)) {
@@ -193,4 +193,3 @@ main().catch(err => {
   console.error('Error en poll:', err);
   process.exit(1);
 });
-              
