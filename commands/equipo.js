@@ -1,14 +1,16 @@
 /**
  * Comando /equipo [nombre] — información de un equipo.
  * Tolera variantes: mayúsculas/minúsculas, con/sin tildes.
+ * Lee de la cache de Supabase (gamesCache, teamsCache, stadiumsCache),
+ * NO llama a worldcup26.ir directamente, porque esa API rechaza
+ * conexiones desde Vercel.
  */
 
-const { getTeamByName } = require('../worldcup-api/getTeam');
-const { getGames } = require('../worldcup-api/getGames');
 const { getTeams } = require('../worldcup-api/getTeams');
 const { getTeamsMap } = require('../storage/teamsCache');
 const { getStadiums } = require('../worldcup-api/getStadiums');
 const { getStadiumsMap } = require('../storage/stadiumsCache');
+const { getGamesFromCache } = require('../storage/gamesCache');
 const { buildStadiumTimezoneMap, toSpainTime } = require('../utils/timezone');
 const { formatTeamInfo } = require('../formatters/teamInfo');
 
@@ -26,6 +28,29 @@ function normalizeName(name) {
 }
 
 /**
+ * Busca un equipo en el mapa de equipos cacheado por nombre (fuzzy).
+ * @param {string} searchName
+ * @param {Object} teamsMap
+ * @returns {Object|null}
+ */
+function findTeamInCache(searchName, teamsMap) {
+  const normalizedSearch = normalizeName(searchName);
+
+  for (const t of Object.values(teamsMap)) {
+    const names = [t.name_en, t.name_fa, t.fifa_code].filter(Boolean);
+
+    for (const n of names) {
+      const normalized = normalizeName(n);
+      if (normalized === normalizedSearch || normalized.includes(normalizedSearch)) {
+        return t;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * @param {string} query - Nombre del equipo
  * @returns {Promise<string>} Mensaje para Telegram
  */
@@ -35,40 +60,22 @@ async function equipo(query) {
   }
 
   const searchName = query.trim();
-  const normalizedSearch = normalizeName(searchName);
 
-  // Intentar búsqueda directa primero
-  let team = await getTeamByName(searchName);
+  const [teamsMap, stadiumsMap, games] = await Promise.all([
+    getTeamsMap(getTeams),
+    getStadiumsMap(getStadiums),
+    getGamesFromCache(),
+  ]);
 
-  // Si falla, buscar en cache con fuzzy matching
-  if (!team) {
-    const teamsMap = await getTeamsMap(getTeams);
-    for (const t of Object.values(teamsMap)) {
-      const names = [
-        t.name_en,
-        t.name_fa,
-        t.fifa_code,
-      ].filter(Boolean);
-
-      for (const n of names) {
-        if (normalizeName(n) === normalizedSearch || normalizeName(n).includes(normalizedSearch)) {
-          team = t;
-          break;
-        }
-      }
-      if (team) break;
-    }
-  }
+  const team = findTeamInCache(searchName, teamsMap);
 
   if (!team) {
     return `❌ No encontré el equipo *"${searchName}"*. Prueba con el nombre en inglés.`;
   }
 
-  // Buscar próximos partidos del equipo
-  const [games, stadiumsMap] = await Promise.all([
-    getGames(),
-    getStadiumsMap(getStadiums),
-  ]);
+  if (games.length === 0) {
+    return '⚠️ Aún no hay datos de partidos en cache. Inténtalo de nuevo en unos minutos.';
+  }
 
   const stadiumTzMap = buildStadiumTimezoneMap(Object.values(stadiumsMap));
   const teamId = String(team.id);
@@ -101,7 +108,6 @@ async function equipo(query) {
     })
     .sort((a, b) => a._spainDate - b._spainDate);
 
-  const teamsMap = await getTeamsMap(getTeams);
   return formatTeamInfo(team, upcoming, teamsMap);
 }
 
