@@ -3,6 +3,7 @@
  */
 
 const { formatSpainDate } = require('../utils/timezone');
+const { getTeamFlagEmoji } = require('../utils/flagEmoji');
 
 /**
  * @param {Array} matches - Partidos filtrados y ordenados
@@ -21,6 +22,9 @@ function formatMatchList(matches, teamsMap, title) {
     const home = teamsMap[m.home_team_id] || { name_en: m.home_team_name_en || '???', flag: '' };
     const away = teamsMap[m.away_team_id] || { name_en: m.away_team_name_en || '???', flag: '' };
 
+    const homeFlag = getTeamFlagEmoji(home);
+    const awayFlag = getTeamFlagEmoji(away);
+
     const score = m.finished === 'TRUE' || m.finished === true
       ? `${m.home_score ?? 0} - ${m.away_score ?? 0}`
       : 'vs';
@@ -29,7 +33,7 @@ function formatMatchList(matches, teamsMap, title) {
     const groupLabel = m.type === 'group' ? `Grupo ${m.group}` : m.group;
 
     lines.push(
-      `${home.flag} *${home.name_en}* ${score} *${away.name_en}* ${away.flag}`,
+      `${homeFlag} *${home.name_en}* ${score} *${away.name_en}* ${awayFlag}`,
       `   📅 ${dateStr} · ${groupLabel}`,
       ``
     );
