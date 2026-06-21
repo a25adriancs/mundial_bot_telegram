@@ -3,6 +3,10 @@
  * Calcula la clasificación a partir de los partidos cacheados
  * (gamesCache), NO llama a worldcup26.ir directamente, porque esa
  * API rechaza conexiones desde Vercel.
+ *
+ * Genera la misma forma de datos que antes devolvía getGroupByName
+ * ({ group, teams: [{ team_id, pts, gf, ga }] }) para no tener que
+ * tocar formatters/standings.js.
  */
 
 const { getTeams } = require('../worldcup-api/getTeams');
@@ -14,18 +18,16 @@ const { formatStandings } = require('../formatters/standings');
  * Calcula la tabla de clasificación de un grupo a partir de los
  * partidos finalizados de ese grupo.
  * Criterios de desempate: puntos > diferencia de goles > goles a favor.
- * (Nota: esto es una aproximación estándar; el desempate oficial FIFA
- * puede incluir más criterios como resultado entre sí, fair play, etc.)
+ * (Aproximación estándar; el desempate oficial FIFA puede incluir
+ * más criterios como resultado entre sí, fair play, etc.)
  *
  * @param {string} groupName - Letra del grupo (A-L)
  * @param {Array} games - Lista completa de partidos
- * @param {Object} teamsMap - Mapa id -> equipo
- * @returns {Array} Tabla ordenada de standings
+ * @returns {Array} Lista de { team_id, pts, gf, ga } ordenada
  */
-function computeStandings(groupName, games, teamsMap) {
+function computeStandings(groupName, games) {
   const groupGames = games.filter(g => g.group === groupName);
 
-  // Identifica todos los equipos que participan en el grupo
   const teamIds = new Set();
   for (const g of groupGames) {
     teamIds.add(String(g.home_team_id));
@@ -34,16 +36,7 @@ function computeStandings(groupName, games, teamsMap) {
 
   const table = {};
   for (const id of teamIds) {
-    table[id] = {
-      team: teamsMap[id] || { id, name_en: 'Desconocido' },
-      played: 0,
-      won: 0,
-      drawn: 0,
-      lost: 0,
-      goalsFor: 0,
-      goalsAgainst: 0,
-      points: 0,
-    };
+    table[id] = { team_id: id, pts: 0, gf: 0, ga: 0, played: 0 };
   }
 
   for (const g of groupGames) {
@@ -59,37 +52,28 @@ function computeStandings(groupName, games, teamsMap) {
 
     table[homeId].played++;
     table[awayId].played++;
-    table[homeId].goalsFor += homeScore;
-    table[homeId].goalsAgainst += awayScore;
-    table[awayId].goalsFor += awayScore;
-    table[awayId].goalsAgainst += homeScore;
+    table[homeId].gf += homeScore;
+    table[homeId].ga += awayScore;
+    table[awayId].gf += awayScore;
+    table[awayId].ga += homeScore;
 
     if (homeScore > awayScore) {
-      table[homeId].won++;
-      table[homeId].points += 3;
-      table[awayId].lost++;
+      table[homeId].pts += 3;
     } else if (homeScore < awayScore) {
-      table[awayId].won++;
-      table[awayId].points += 3;
-      table[homeId].lost++;
+      table[awayId].pts += 3;
     } else {
-      table[homeId].drawn++;
-      table[awayId].drawn++;
-      table[homeId].points += 1;
-      table[awayId].points += 1;
+      table[homeId].pts += 1;
+      table[awayId].pts += 1;
     }
   }
 
-  return Object.values(table)
-    .map(row => ({
-      ...row,
-      goalDiff: row.goalsFor - row.goalsAgainst,
-    }))
-    .sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff;
-      return b.goalsFor - a.goalsFor;
-    });
+  return Object.values(table).sort((a, b) => {
+    if (b.pts !== a.pts) return b.pts - a.pts;
+    const dgA = a.gf - a.ga;
+    const dgB = b.gf - b.ga;
+    if (dgB !== dgA) return dgB - dgA;
+    return b.gf - a.gf;
+  });
 }
 
 /**
@@ -123,13 +107,13 @@ async function clasificacion(groupName) {
     return '❌ Grupo no válido. Usa una letra entre A y L.';
   }
 
-  const standings = computeStandings(normalized, games, teamsMap);
+  const teams = computeStandings(normalized, games);
 
-  if (standings.length === 0) {
+  if (teams.length === 0) {
     return `❌ No encontré partidos para el grupo ${normalized}.`;
   }
 
-  return formatStandings({ group: normalized, standings }, teamsMap);
+  return formatStandings({ group: normalized, teams }, teamsMap);
 }
 
 module.exports = { clasificacion };
