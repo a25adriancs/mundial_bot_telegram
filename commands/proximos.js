@@ -22,14 +22,25 @@ async function proximos() {
     getGamesFromCache(),
   ]);
 
+  // LOG TEMPORAL DE DIAGNÓSTICO - quitar cuando se resuelva el problema
+  console.log('[/proximos] games.length:', games.length);
+  console.log('[/proximos] typeof games:', typeof games, Array.isArray(games));
+  console.log('[/proximos] stadiumsMap keys:', Object.keys(stadiumsMap).length);
+
   if (games.length === 0) {
     return '⚠️ Aún no hay datos de partidos en cache. Inténtalo de nuevo en unos minutos.';
   }
 
   const stadiumTzMap = buildStadiumTimezoneMap(Object.values(stadiumsMap));
+  console.log('[/proximos] stadiumTzMap size:', stadiumTzMap.size);
+  console.log('[/proximos] stadiumTzMap tiene "7"?:', stadiumTzMap.has('7'), stadiumTzMap.get('7'));
 
   const nowSpain = new Date().toLocaleString('en-US', { timeZone: 'Europe/Madrid' });
   const now = new Date(nowSpain);
+  console.log('[/proximos] now (Madrid):', now.toString());
+
+  const notFinished = games.filter(g => !(g.finished === 'TRUE' || g.finished === true));
+  console.log('[/proximos] partidos no finalizados:', notFinished.length);
 
   const upcoming = games
     .filter(g => {
@@ -52,6 +63,8 @@ async function proximos() {
     })
     .sort((a, b) => a._spainDate - b._spainDate)
     .slice(0, 10); // Máximo 10 próximos
+
+  console.log('[/proximos] upcoming.length tras filtro:', upcoming.length);
 
   return formatMatchList(upcoming, teamsMap, 'Próximos partidos');
 }
