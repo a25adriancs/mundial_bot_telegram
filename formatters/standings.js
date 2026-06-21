@@ -1,7 +1,7 @@
 /**
  * Formatea la tabla de clasificación de un grupo.
  * Usa banderas emoji (derivadas del código de país) en vez de URLs,
- * y un formato más legible para Telegram.
+ * y un formato limpio y legible para Telegram.
  */
 
 const { sanitizeText } = require('../utils/sanitizeText');
@@ -63,27 +63,24 @@ function formatStandings(group, teamsMap) {
 
   const groupName = group.group || group.name || '?';
 
-  const lines = [
-    `📊 *CLASIFICACIÓN — GRUPO ${groupName}*`,
-    '',
-  ];
+  const lines = [`📊 *CLASIFICACIÓN — GRUPO ${groupName}*`, ''];
 
   group.teams.forEach((t, index) => {
     const team = teamsMap[t.team_id] || teamsMap[String(t.team_id)] || null;
     const name = team ? (sanitizeText(team.name_en) || 'Equipo desconocido') : `Equipo ${t.team_id}`;
     const flagEmoji = getTeamFlagEmoji(team);
 
-    const pts = t.pts ?? 0;
-    const gf = parseInt(t.gf) || 0;
-    const ga = parseInt(t.ga) || 0;
+    const pts = Number(t.pts) || 0;
+    const gf = Number(t.gf) || 0;
+    const ga = Number(t.ga) || 0;
     const dg = gf - ga;
     const dgStr = dg > 0 ? `+${dg}` : `${dg}`;
 
     const position = index + 1;
-    const medal = position === 1 ? '🥇' : position === 2 ? '🥈' : '';
+    const medal = position === 1 ? ' 🥇' : position === 2 ? ' 🥈' : '';
 
-    lines.push(`${position}. ${flagEmoji} *${name}* ${medal}`);
-    lines.push(`   Pts: *${pts}*  ·  GF: ${gf}  ·  GC: ${ga}  ·  DG: ${dgStr}`);
+    lines.push(`${position}. ${flagEmoji} *${name}*${medal}`);
+    lines.push(`    Pts: *${pts}* · GF: ${gf} · GC: ${ga} · DG: ${dgStr}`);
     lines.push('');
   });
 
