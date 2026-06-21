@@ -1,15 +1,14 @@
 /**
  * Conversión de zonas horarias de estadios a hora española (Europe/Madrid).
  * Mapea stadium_id → zona horaria real del venue.
+ *
+ * NOTA IMPORTANTE: en algunos entornos serverless (Vercel) el soporte de
+ * Intl/ICU puede comportarse de forma distinta a un entorno Node completo,
+ * lo que en ciertos casos producía "Invalid Date" al usar hour12:false.
+ * Por eso aquí se usa hourCycle:'h23' (más explícito y fiable) y se valida
+ * el resultado con un fallback de offsets fijos por si Intl fallara.
  */
 
-const STADIUM_TIMEZONES = {
-  // Estados Unidos
-  '1': 'America/New_York',   // Estadio Azteca (Mexico City) → CT en realidad, pero la API usa ids propios
-  // Nota: los IDs reales de la API deben mapearse tras obtener /get/stadiums
-};
-
-// Mapeo por ciudad basado en los estadios documentados
 const CITY_TO_TZ = {
   'Mexico City': 'America/Mexico_City',
   'Guadalajara': 'America/Mexico_City',
@@ -35,6 +34,19 @@ const CITY_TO_TZ = {
   'Toronto': 'America/Toronto',
 };
 
+// Offsets de respaldo (en minutos, UTC - hora_local) para horario de VERANO
+// (DST activo), que es el periodo del Mundial 2026 (11 jun - 19 jul).
+// Solo se usan si el cálculo vía Intl falla por algún motivo.
+const DST_FALLBACK_OFFSET_MIN = {
+  'America/New_York': 240,    // UTC-4
+  'America/Chicago': 300,     // UTC-5
+  'America/Los_Angeles': 420, // UTC-7
+  'America/Mexico_City': 300, // UTC-5 (México no aplica DST desde 2022)
+  'America/Monterrey': 300,
+  'America/Toronto': 240,
+  'America/Vancouver': 420,
+};
+
 /**
  * Construye el mapeo stadium_id → timezone a partir de los datos de la API.
  * @param {Array} stadiums - Resultado de getStadiums()
@@ -55,7 +67,6 @@ function buildStadiumTimezoneMap(stadiums) {
       }
     }
 
-    // Fallback por país
     if (!tz) {
       if (country.includes('United States')) tz = 'America/New_York';
       else if (country.includes('Mexico')) tz = 'America/Mexico_City';
@@ -71,43 +82,78 @@ function buildStadiumTimezoneMap(stadiums) {
 }
 
 /**
- * Convierte una fecha local del estadio a hora española.
- * @param {string} localDate - Formato "MM/DD/YYYY HH:mm" de la API
+ * Calcula el offset en minutos (UTC - hora_local_timezone) para un
+ * instante dado, usando Intl.DateTimeFormat con hourCycle explícito.
+ * @param {Date} date
+ * @param {string} timeZone
+ * @returns {number|null} Offset en minutos, o null si el cálculo falla
+ */
+function getOffsetMinutes(date, timeZone) {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hourCycle: 'h23', // más explícito y fiable que hour12:false entre runtimes
+    });
+    const parts = dtf.formatToParts(date);
+    const get = (type) => parts.find(p => p.type === type)?.value;
+
+    const year = Number(get('year'));
+    const month = Number(get('month'));
+    const day = Number(get('day'));
+    const hour = Number(get('hour'));
+    const minute = Number(get('minute'));
+    const second = Number(get('second'));
+
+    if ([year, month, day, hour, minute, second].some(v => Number.isNaN(v))) {
+      return null;
+    }
+
+    const asUTC = Date.UTC(year, month - 1, day, hour, minute, second);
+    const offset = (asUTC - date.getTime()) / 60000;
+
+    return Number.isNaN(offset) ? null : offset;
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Convierte una fecha LOCAL del estadio (string sin zona horaria) a un Date
+ * que representa el instante UTC real. Funciona igual sin importar en qué
+ * timezone corra el proceso (Madrid, UTC, etc. — importante para GitHub
+ * Actions y Vercel, que usan UTC).
+ *
+ * @param {string} localDate - Formato "MM/DD/YYYY HH:mm" de la API, hora LOCAL del estadio
  * @param {string} timezone - Zona horaria del estadio (ej: 'America/New_York')
- * @returns {Date} Fecha en Europe/Madrid
+ * @returns {Date} Instante UTC real del partido
  */
 function toSpainTime(localDate, timezone) {
-  // Parsea "06/11/2026 13:00" como fecha en la timezone del estadio
-  const [datePart, timePart] = localDate.split(' ');
-  const [month, day, year] = datePart.split('/');
-  const [hour, minute] = timePart.split(':');
+  const [datePart, timePart] = (localDate || '').split(' ');
+  if (!datePart || !timePart) {
+    return new Date(NaN);
+  }
 
-  // Crea fecha en la timezone del estadio usando el constructor con timezone
-  const dateStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour}:${minute}:00`;
-  
-  // Usa Intl.DateTimeFormat para convertir
-  const date = new Date(dateStr);
-  
-  // Convertimos a string en la timezone del estadio y luego parseamos a Madrid
-  const options = { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false };
-  const formatter = new Intl.DateTimeFormat('en-US', options);
-  const parts = formatter.formatToParts(date);
-  
-  const getPart = (type) => parts.find(p => p.type === type)?.value;
-  
-  const madridStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}:00`;
-  
-  // Ahora interpretamos esa fecha en Europe/Madrid
-  const madridDate = new Date(madridStr);
-  
-  // Diferencia entre la hora UTC y la hora del estadio nos da el offset
-  // Simplificación: usamos el approach de crear fecha en UTC y aplicar offset
-  // En Node.js moderno podemos usar toLocaleString con timeZone
-  const spainStr = date.toLocaleString('en-US', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
-  const spainParts = spainStr.split(/[\/, :]/);
-  // mm/dd/yyyy, hh:mm → [mm, dd, yyyy, hh, mm]
-  
-  return new Date(`${spainParts[2]}-${spainParts[0]}-${spainParts[1]}T${spainParts[3]}:${spainParts[4]}:00`);
+  const [month, day, year] = datePart.split('/').map(Number);
+  const [hour, minute] = timePart.split(':').map(Number);
+
+  if ([month, day, year, hour, minute].some(v => Number.isNaN(v))) {
+    return new Date(NaN);
+  }
+
+  const naiveUTC = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const guess = new Date(naiveUTC);
+
+  let offsetMin = getOffsetMinutes(guess, timezone);
+
+  // Fallback: si Intl falla en este entorno, usar offset fijo conocido
+  // (válido para el periodo del Mundial 2026, en horario de verano).
+  if (offsetMin === null) {
+    offsetMin = DST_FALLBACK_OFFSET_MIN[timezone] ?? 240; // default America/New_York
+  }
+
+  return new Date(naiveUTC - offsetMin * 60000);
 }
 
 /**
@@ -116,6 +162,9 @@ function toSpainTime(localDate, timezone) {
  * @returns {string} Ej: "11/06/2026 19:00"
  */
 function formatSpainDate(date) {
+  if (Number.isNaN(date.getTime())) {
+    return 'Fecha no disponible';
+  }
   return date.toLocaleString('es-ES', {
     timeZone: 'Europe/Madrid',
     day: '2-digit',
@@ -133,6 +182,9 @@ function formatSpainDate(date) {
  * @returns {string} Ej: "2026-06-11"
  */
 function getSpainDateString(date) {
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
   return date.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
 }
 
@@ -151,3 +203,4 @@ module.exports = {
   getSpainDateString,
   getTodaySpain,
 };
+    
