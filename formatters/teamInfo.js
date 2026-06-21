@@ -3,6 +3,7 @@
  */
 
 const { sanitizeText } = require('../utils/sanitizeText');
+const { getTeamFlagEmoji } = require('../utils/flagEmoji');
 
 /**
  * @param {Object} team - Equipo de la API
@@ -19,10 +20,10 @@ function formatTeamInfo(team, upcomingMatches, teamsMap) {
   const nameFa = sanitizeText(team.name_fa);
   const fifaCode = sanitizeText(team.fifa_code) || '';
   const group = team.groups || team.group || '?';
-  const flag = team.flag || '';
+  const flagEmoji = getTeamFlagEmoji(team);
 
   const lines = [
-    `${flag} *${name}* ${fifaCode ? `(${fifaCode})` : ''}`,
+    `${flagEmoji} *${name}* ${fifaCode ? `(${fifaCode})` : ''}`,
     nameFa ? `_${nameFa}_` : '',
     `📊 Grupo ${group}`,
   ].filter(Boolean);
