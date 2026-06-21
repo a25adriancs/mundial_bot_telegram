@@ -10,6 +10,7 @@ const { resultadosHoy } = require('../commands/resultadosHoy');
 const { proximos } = require('../commands/proximos');
 const { clasificacion } = require('../commands/clasificacion');
 const { equipo } = require('../commands/equipo');
+const { equipos } = require('../commands/equipos');
 const { sendMessage } = require('../telegram/sendMessage');
 
 /**
@@ -34,6 +35,10 @@ function parseCommand(text, botUsername) {
 }
 
 module.exports = async function handler(req, res) {
+  if (req.method === 'GET') {
+    return res.status(200).send('✅ Webhook activo. Esperando updates de Telegram (POST).');
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -76,6 +81,9 @@ module.exports = async function handler(req, res) {
         break;
       case '/equipo':
         reply = await equipo(args || null);
+        break;
+      case '/equipos':
+        reply = await equipos();
         break;
       default:
         reply = '❓ Comando no reconocido. Usa /start para ver los disponibles.';
